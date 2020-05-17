@@ -5,9 +5,11 @@ package main
 import (
 	"fmt"
 	"html"
+	"reflect"
 	"strings"
 	"syscall/js"
 
+	"github.com/tesujiro/ago/lib"
 	"github.com/tesujiro/ago/parser"
 	"github.com/tesujiro/ago/vm"
 )
@@ -34,13 +36,19 @@ func writeStderr(s string) {
 
 func main() {
 	env := vm.NewEnv([]string{})
+	env = lib.Import(env)
 
-	env.Define("print", func(a ...interface{}) {
-		writeStdout(fmt.Sprint(a...))
-	})
-	env.Define("printf", func(a string, b ...interface{}) {
+	//TODO:
+	/*
+		env.Define("print", func(a ...interface{}) {
+			writeStdout(fmt.Sprint(a...))
+		})
+	*/
+
+	printf := func(a string, b ...interface{}) {
 		writeStdout(fmt.Sprintf(a, b...))
-	})
+	}
+	env.Define("printf", reflect.ValueOf(printf))
 
 	var following bool
 	var source string
@@ -77,7 +85,7 @@ func main() {
 				break
 			}
 
-			stmts, err := parser.ParseSrc(source)
+			rules, err := parser.ParseSrc(source)
 
 			if e, ok := err.(*parser.Error); ok {
 				es := e.Error()
@@ -104,7 +112,7 @@ func main() {
 			var v interface{}
 
 			if err == nil {
-				v, err = vm.Run(stmts, env)
+				v, err = vm.Run(rules, env)
 			}
 			if err != nil {
 				/*

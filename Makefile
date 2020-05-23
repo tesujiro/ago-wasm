@@ -10,5 +10,6 @@ start_server:
 publish:
 	git checkout gh-pages
 	git rebase master
+	git commit -m "update" -a
 	git push
 	git checkout master

@@ -7,3 +7,8 @@ cp_js:
 start_server:
 	./server/server &
 
+publish:
+	git checkout gh-pages
+	git rebase master
+	git push
+	git checkout master

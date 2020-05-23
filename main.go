@@ -17,6 +17,7 @@ import (
 var (
 	result = js.Global().Get("document").Call("getElementById", "result")
 	input  = js.Global().Get("document").Call("getElementById", "input")
+	infile = js.Global().Get("document").Call("getElementById", "infile")
 )
 
 func writeCommand(s string) {
@@ -37,13 +38,8 @@ func writeStderr(s string) {
 func main() {
 	env := vm.NewEnv([]string{})
 	env = lib.Import(env)
-
-	//TODO:
-	/*
-		env.Define("print", func(a ...interface{}) {
-			writeStdout(fmt.Sprint(a...))
-		})
-	*/
+	env.SetFS(" ")
+	vm.SetGlobalVariables()
 
 	printf := func(a string, b ...interface{}) {
 		writeStdout(fmt.Sprintf(a, b...))
@@ -55,17 +51,42 @@ func main() {
 
 	parser.EnableErrorVerbose()
 
-	ch := make(chan string)
+	ch := make(chan []string)
 
-	input.Call("addEventListener", "keypress", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	currBuffer := 0
+	sourceBuffer := []string{}
+
+	//input.Call("addEventListener", "keypress", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	input.Call("addEventListener", "keyup", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		e := args[0]
-		if e.Get("keyCode").Int() != 13 {
-			return nil
+		//fmt.Printf("keyCode=%v\n", e.Get("keyCode").Int())
+		switch e.Get("keyCode").Int() {
+		case 13: // CR
+			src := e.Get("target").Get("value").String()
+			e.Get("target").Set("value", "")
+			writeCommand(src)
+			sourceBuffer = append(sourceBuffer, src)
+			currBuffer = len(sourceBuffer)
+			//fmt.Println(infile.Get("value").String())
+			in := infile.Get("value").String()
+			ch <- []string{src, in}
+		case 38: // UP arrow
+			if currBuffer > 0 {
+				currBuffer--
+				src := sourceBuffer[currBuffer]
+				//currBuffer = len(sourceBuffer)
+				//writeCommand(s)
+				e.Get("target").Set("value", src)
+			}
+		case 40: // DOWN arrow
+			if currBuffer < len(sourceBuffer)-1 {
+				currBuffer++
+				src := sourceBuffer[currBuffer]
+				//currBuffer = len(sourceBuffer)
+				//writeCommand(src)
+				e.Get("target").Set("value", src)
+			}
 		}
-		s := e.Get("target").Get("value").String()
-		e.Get("target").Set("value", "")
-		writeCommand(s)
-		ch <- s
 		return nil
 	}))
 	input.Set("disabled", false)
@@ -73,19 +94,23 @@ func main() {
 
 	go func() {
 		for {
-			text, ok := <-ch
+			texts, ok := <-ch
 			if !ok {
 				break
 			}
+			text := texts[0]
+			inputStr := texts[1]
+
 			source += text
 			if source == "" {
 				continue
 			}
-			if source == "quit()" {
+			if source == "exit" {
 				break
 			}
 
 			rules, err := parser.ParseSrc(source)
+			//parser.Dump(rules)
 
 			if e, ok := err.(*parser.Error); ok {
 				es := e.Error()
@@ -112,6 +137,7 @@ func main() {
 			var v interface{}
 
 			if err == nil {
+				env.SetPseudoStdin(inputStr)
 				v, err = vm.Run(rules, env)
 			}
 			if err != nil {
